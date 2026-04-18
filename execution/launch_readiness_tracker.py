@@ -361,31 +361,118 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# ── Session state init (run once) ─────────────
+if "eng" not in st.session_state:
+    st.session_state.eng = ENGAGEMENT.copy()
+if "ws" not in st.session_state:
+    st.session_state.ws = [w.copy() for w in WORKSTREAMS]
+if "lc" not in st.session_state:
+    st.session_state.lc = list(LAUNCH_CRITERIA)
+if "risks" not in st.session_state:
+    st.session_state.risks = [r.copy() for r in RISKS]
+if "items" not in st.session_state:
+    st.session_state["items"] = [i.copy() for i in OPEN_ITEMS]
+
+# Shortcuts
+eng   = st.session_state.eng
+ws    = st.session_state.ws
+lc    = st.session_state.lc
+risks = st.session_state.risks
+items = st.session_state["items"]
+
 # ── Sidebar ──────────────────────────────────
 with st.sidebar:
     st.markdown("### Engagement")
-    st.markdown(f"**{ENGAGEMENT['name']}**")
-    st.markdown(f"Client: `{ENGAGEMENT['client']}`")
-    st.markdown(f"Delivery Lead: {ENGAGEMENT['delivery_lead']}")
+    st.markdown(f"**{eng['name']}**")
+    st.markdown(f"Client: `{eng['client']}`")
+    st.markdown(f"Delivery Lead: {eng['delivery_lead']}")
     st.divider()
 
-    st.markdown(f"**Week {ENGAGEMENT['current_week']} of {ENGAGEMENT['total_weeks']}**")
-    week_progress = ENGAGEMENT["current_week"] / ENGAGEMENT["total_weeks"]
-    st.progress(week_progress)
+    st.markdown(f"**Week {eng['current_week']} of {eng['total_weeks']}**")
+    st.progress(eng["current_week"] / eng["total_weeks"])
     st.divider()
+
+    # ── Edit Mode ─────────────────────────────
+    edit_mode = st.toggle("✏️ Edit Mode", value=False)
+
+    if edit_mode:
+        st.markdown("**Overall**")
+        eng["overall_status"] = st.selectbox(
+            "Delivery Status", ["GREEN", "AMBER", "RED"],
+            index=["GREEN", "AMBER", "RED"].index(eng["overall_status"]),
+            key="rag_select"
+        )
+        eng["current_week"] = st.slider(
+            "Current Week", 1, eng["total_weeks"], eng["current_week"]
+        )
+        eng["status_note"] = st.text_area(
+            "Status Note", eng["status_note"], height=80
+        )
+        st.divider()
+
+        st.markdown("**Workstreams**")
+        for i, w in enumerate(ws):
+            with st.expander(f"{w['id']}"):
+                w["status"] = st.selectbox(
+                    "Status", ["Complete", "In Progress", "Blocked", "At Risk", "Not Started"],
+                    index=["Complete", "In Progress", "Blocked", "At Risk", "Not Started"].index(w["status"]),
+                    key=f"ws_status_{i}"
+                )
+                w["pct"] = st.slider("Completion %", 0, 100, w["pct"], key=f"ws_pct_{i}")
+                w["note"] = st.text_input("Note", w["note"], key=f"ws_note_{i}")
+        st.divider()
+
+        st.markdown("**Launch Criteria**")
+        status_map = {True: "Pass", False: "Fail", None: "Not Tested"}
+        reverse_map = {"Pass": True, "Fail": False, "Not Tested": None}
+        new_lc = []
+        for i, (criterion, owner, s) in enumerate(lc):
+            val = st.selectbox(
+                criterion[:40] + "…" if len(criterion) > 40 else criterion,
+                ["Pass", "Fail", "Not Tested"],
+                index=["Pass", "Fail", "Not Tested"].index(status_map[s]),
+                key=f"lc_{i}"
+            )
+            new_lc.append((criterion, owner, reverse_map[val]))
+        st.session_state.lc = new_lc
+        lc = st.session_state.lc
+        st.divider()
+
+        st.markdown("**Risks**")
+        for i, r in enumerate(risks):
+            with st.expander(r["id"]):
+                r["status"] = st.selectbox(
+                    "Status", ["Active", "Monitoring", "Mitigated"],
+                    index=["Active", "Monitoring", "Mitigated"].index(r["status"]),
+                    key=f"risk_{i}"
+                )
+        st.divider()
+
+        st.markdown("**Open Items**")
+        for i, item in enumerate(items):
+            item["blocker"] = st.checkbox(
+                f"🔴 {item['item']}" if item["blocker"] else f"🟡 {item['item']}",
+                value=item["blocker"], key=f"item_{i}"
+            )
+        st.divider()
+
+        if st.button("Reset to defaults", use_container_width=True):
+            for key in ["eng", "ws", "lc", "risks", "items"]:
+                del st.session_state[key]
+            st.rerun()
 
     # ── Directives viewer ─────────────────────
     st.markdown("**Directives**")
     st.caption("Click to preview SOP content")
-    for ws in WORKSTREAMS:
-        with st.expander(f"{ws['id']} — {ws['name']}"):
-            st.caption(f"📄 `{ws['directive']}`")
+    for w in ws:
+        with st.expander(f"{w['id']} — {w['name']}"):
+            st.caption(f"📄 `{w['directive']}`")
             st.markdown("**Done when:**")
-            for criterion in ws["done_when"]:
+            for criterion in w["done_when"]:
                 st.markdown(f"- {criterion}")
             try:
-                content = open(ws["directive"]).read()
-                if st.button(f"Show full directive", key=f"dir_{ws['id']}"):
+                content = open(w["directive"]).read()
+                if st.button("Show full directive", key=f"dir_{w['id']}"):
                     st.markdown(content)
             except FileNotFoundError:
                 st.caption("File not found — check path")
@@ -394,11 +481,11 @@ with st.sidebar:
     st.caption(f"Last updated: {date.today()}")
 
 # ── Header ───────────────────────────────────
-rag = ENGAGEMENT["overall_status"]
+rag       = eng["overall_status"]
 rag_color = RAG_COLOR[rag]
 
 st.title("🏥 Launch Readiness Tracker")
-st.markdown(f"*{ENGAGEMENT['name']} — {ENGAGEMENT['client']}*")
+st.markdown(f"*{eng['name']} — {eng['client']}*")
 
 col_rag, col_guide, col_ws = st.columns([1, 2, 2], gap="medium")
 
@@ -408,7 +495,7 @@ with col_rag:
                 padding:18px 14px;border-radius:10px;">
       <div style="font-size:11px;font-weight:600;letter-spacing:1px">DELIVERY STATUS</div>
       <div style="font-size:28px;font-weight:700;margin:6px 0">{rag}</div>
-      <div style="font-size:11px;line-height:1.5;opacity:0.92">{ENGAGEMENT['status_note']}</div>
+      <div style="font-size:11px;line-height:1.5;opacity:0.92">{eng['status_note']}</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -448,7 +535,7 @@ with col_ws:
     """, unsafe_allow_html=True)
 
 st.markdown("")
-st.info(f"**Status Note:** {ENGAGEMENT['status_note']}")
+st.info(f"**Status Note:** {eng['status_note']}")
 st.divider()
 
 # ── Layout: tabs (left) + insights panel (right) ─────
@@ -462,7 +549,7 @@ with col_right:
     if st.button("Generate Delivery Insights", type="primary", use_container_width=True):
         with st.spinner("Analyzing engagement data..."):
             raw, source = generate_insights(
-                ENGAGEMENT, WORKSTREAMS, RISKS, OPEN_ITEMS, LAUNCH_CRITERIA
+                eng, ws, risks, items, lc
             )
             st.session_state["insights"] = raw
             st.session_state["insights_source"] = source
@@ -496,39 +583,39 @@ with col_main:
     with tab1:
         st.subheader("Workstream Health")
 
-        blocked = sum(1 for w in WORKSTREAMS if w["status"] == "Blocked")
-        complete = sum(1 for w in WORKSTREAMS if w["status"] == "Complete")
-        in_progress = sum(1 for w in WORKSTREAMS if w["status"] == "In Progress")
+        blocked = sum(1 for w in ws if w["status"] == "Blocked")
+        complete = sum(1 for w in ws if w["status"] == "Complete")
+        in_progress = sum(1 for w in ws if w["status"] == "In Progress")
 
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Workstreams Complete", f"{complete} / {len(WORKSTREAMS)}")
+        m1.metric("Workstreams Complete", f"{complete} / {len(ws)}")
         m2.metric("In Progress", in_progress)
         m3.metric("Blocked", blocked, delta=f"-{blocked} need action" if blocked else None,
                   delta_color="inverse")
-        avg_pct = sum(w["pct"] for w in WORKSTREAMS) // len(WORKSTREAMS)
+        avg_pct = sum(w["pct"] for w in ws) // len(ws)
         m4.metric("Avg Completion", f"{avg_pct}%")
 
         st.divider()
 
-        for ws in WORKSTREAMS:
+        for w in ws:
             with st.container():
                 c1, c2, c3, c4 = st.columns([2, 3, 2, 4])
                 with c1:
-                    st.markdown(f"**{ws['id']}**")
-                    st.markdown(status_badge(ws["status"]), unsafe_allow_html=True)
+                    st.markdown(f"**{w['id']}**")
+                    st.markdown(status_badge(w["status"]), unsafe_allow_html=True)
                 with c2:
-                    st.markdown(f"**{ws['name']}**")
-                    st.caption(f"Owner: {ws['owner']}")
+                    st.markdown(f"**{w['name']}**")
+                    st.caption(f"Owner: {w['owner']}")
                 with c3:
-                    st.markdown(pct_bar(ws["pct"], ws["status"]), unsafe_allow_html=True)
-                    st.caption(f"Weeks {ws['weeks']}")
+                    st.markdown(pct_bar(w["pct"], w["status"]), unsafe_allow_html=True)
+                    st.caption(f"Weeks {w['weeks']}")
                 with c4:
-                    st.caption(ws["note"])
+                    st.caption(w["note"])
 
-                with st.expander(f"What does 100% mean for {ws['id']}?"):
-                    for item in ws["done_when"]:
-                        done = ws["pct"] == 100
-                        icon = "✅" if done else ("🔴" if ws["status"] == "Blocked" else "⏳")
+                with st.expander(f"What does 100% mean for {w['id']}?"):
+                    for item in w["done_when"]:
+                        done = w["pct"] == 100
+                        icon = "✅" if done else ("🔴" if w["status"] == "Blocked" else "⏳")
                         st.markdown(f"{icon} {item}")
             st.divider()
 
@@ -536,9 +623,9 @@ with col_main:
         st.subheader("Launch Criteria Checklist")
         st.caption("Sourced from: directives/ws5_qa_pilot_readiness.md — all items must be green before pilot go-live.")
 
-        passed = sum(1 for _, _, s in LAUNCH_CRITERIA if s is True)
-        failed = sum(1 for _, _, s in LAUNCH_CRITERIA if s is False)
-        pending = sum(1 for _, _, s in LAUNCH_CRITERIA if s is None)
+        passed = sum(1 for _, _, s in lc if s is True)
+        failed = sum(1 for _, _, s in lc if s is False)
+        pending = sum(1 for _, _, s in lc if s is None)
 
         c1, c2, c3 = st.columns(3)
         c1.metric("✅ Pass", passed)
@@ -554,7 +641,7 @@ with col_main:
 
         st.divider()
 
-        for criterion, owner, status in LAUNCH_CRITERIA:
+        for criterion, owner, status in lc:
             col_icon, col_text, col_owner = st.columns([1, 5, 3])
             if status is True:
                 icon, color = "✅", "#2ecc71"
@@ -573,8 +660,8 @@ with col_main:
         st.subheader("Risk Register")
         st.caption("Sourced from: docs/01_delivery_operating_model.md — Risk View section.")
 
-        sorted_risks = sorted(RISKS, key=lambda r: (SEVERITY_ORDER.get(r["severity"], 9),
-                                                      0 if r["status"] == "Active" else 1))
+        sorted_risks = sorted(risks, key=lambda r: (SEVERITY_ORDER.get(r["severity"], 9),
+                                                       0 if r["status"] == "Active" else 1))
 
         for r in sorted_risks:
             sev_color = {"Critical": "#e74c3c", "High": "#e67e22", "Medium": "#f39c12", "Low": "#27ae60"}.get(r["severity"], "#999")
@@ -589,7 +676,7 @@ with col_main:
     with tab4:
         st.subheader("Milestone Timeline — Weeks 1–8")
 
-        current_week = ENGAGEMENT["current_week"]
+        current_week = eng["current_week"]
 
         for m in MILESTONES:
             week = m["week"]
@@ -606,8 +693,8 @@ with col_main:
     with tab5:
         st.subheader("Open Items & Decisions Needed")
 
-        blockers = [i for i in OPEN_ITEMS if i["blocker"]]
-        non_blockers = [i for i in OPEN_ITEMS if not i["blocker"]]
+        blockers = [i for i in items if i["blocker"]]
+        non_blockers = [i for i in items if not i["blocker"]]
 
         if blockers:
             st.error(f"🚨 {len(blockers)} active blocker(s) — immediate action required")
