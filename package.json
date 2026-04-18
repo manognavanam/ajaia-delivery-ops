@@ -1,0 +1,16 @@
+{
+  "name": "ajaia-patient-acquisition-agent",
+  "version": "1.0.0",
+  "description": "Delivery ops prototype for the Patient Acquisition & Growth Agent engagement",
+  "scripts": {
+    "tracker": "streamlit run execution/launch_readiness_tracker.py",
+    "status": "python execution/generate_status_update.py"
+  },
+  "engines": {
+    "python": ">=3.9"
+  },
+  "notes": {
+    "setup": "python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt",
+    "run": "npm run tracker  OR  streamlit run execution/launch_readiness_tracker.py"
+  }
+}
